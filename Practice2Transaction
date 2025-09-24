@@ -1,0 +1,88 @@
+DROP TABLE IF EXISTS StudentEnrollments;
+
+CREATE TABLE StudentEnrollments (
+    enrollment_id INT PRIMARY KEY AUTO_INCREMENT,
+    student_name VARCHAR(100) NOT NULL,
+    course_id VARCHAR(10) NOT NULL,
+    enrollment_date DATE NOT NULL,
+    CONSTRAINT unique_enrollment UNIQUE (student_name, course_id)
+);
+
+INSERT INTO StudentEnrollments (student_name, course_id, enrollment_date)
+VALUES
+('Ashish', 'CSE101', '2024-07-01'),
+('Smaran', 'CSE102', '2024-07-01'),
+('Vaibhav', 'CSE101', '2024-07-01');
+
+SELECT * FROM StudentEnrollments;
+
+-- Part A: Prevent Duplicate Enrollments (Atomicity + Constraint)
+-- Transaction 1 (User A):
+START TRANSACTION;
+INSERT INTO StudentEnrollments (student_name, course_id, enrollment_date)
+VALUES ('Ashish', 'CSE101', '2024-07-02');  -- Fails because unique constraint
+COMMIT;
+
+-- Expected: Error → Duplicate entry (Ashish already in CSE101)
+-- Ensures only one enrollment per student per course.
+-- Part B: Use SELECT FOR UPDATE to Lock Row
+
+-- User A:
+START TRANSACTION;
+SELECT * FROM StudentEnrollments
+WHERE student_name = 'Ashish' AND course_id = 'CSE101'
+FOR UPDATE;
+-- Row is now locked (no one else can update until commit/rollback).
+
+-- User B (while User A’s transaction still open):
+UPDATE StudentEnrollments
+SET enrollment_date = '2024-07-05'
+WHERE student_name = 'Ashish' AND course_id = 'CSE101';
+-- This query will be BLOCKED until User A COMMITs or ROLLBACKs.
+
+-- User A finally commits:
+COMMIT;
+
+-- Now User B’s update will proceed.
+
+-- Part C: Demonstrate Locking Preserves Consistency
+-- Without Locking (race condition possible):
+-- User A updates Ashish’s course date
+
+START TRANSACTION;
+UPDATE StudentEnrollments
+SET enrollment_date = '2024-07-10'
+WHERE student_name = 'Ashish' AND course_id = 'CSE101';
+
+-- User A does not commit yet.
+
+-- User B (in another session) updates same record:
+
+START TRANSACTION;
+UPDATE StudentEnrollments
+SET enrollment_date = '2024-07-15'
+WHERE student_name = 'Ashish' AND course_id = 'CSE101';
+
+-- Without FOR UPDATE, both might overwrite each other inconsistently.
+
+-- With Locking (consistent serialization):
+-- User A locks row:
+
+START TRANSACTION;
+SELECT * FROM StudentEnrollments
+WHERE student_name = 'Ashish' AND course_id = 'CSE101'
+FOR UPDATE;
+
+UPDATE StudentEnrollments
+SET enrollment_date = '2024-07-10'
+WHERE student_name = 'Ashish' AND course_id = 'CSE101';
+COMMIT;
+
+-- User B must now wait until User A commits, then updates:
+
+START TRANSACTION;
+UPDATE StudentEnrollments
+SET enrollment_date = '2024-07-15'
+WHERE student_name = 'Ashish' AND course_id = 'CSE101';
+COMMIT;
+
